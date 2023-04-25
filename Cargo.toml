@@ -4,7 +4,10 @@ version = "0.1.0"
 authors = ["Jonathan LEI <me@xjonathan.dev>"]
 license = "MIT OR Apache-2.0"
 edition = "2021"
+readme = "README.md"
+repository = "https://github.com/xJonathanLEI/cf-pages-cli"
 description = "A simple command line utility for managing Cloudflare Pages projects"
+keywords = ["cloudflare", "cloudflare-pages"]
 
 [dependencies]
 anyhow = "1.0.70"
