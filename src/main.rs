@@ -131,9 +131,15 @@ enum CloudflarePagesEnvVarValueType {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
-struct EnvVarsFile {
+struct FullEnvVarsFile {
     production: BTreeMap<String, String>,
     preview: BTreeMap<String, String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct EnvVarsFile {
+    production: Option<BTreeMap<String, String>>,
+    preview: Option<BTreeMap<String, String>>,
 }
 
 impl FromStr for Environment {
@@ -182,7 +188,7 @@ impl GetEnvVars {
             anyhow::bail!("unsuccessful Cloudflare request");
         }
 
-        let existing_vars: EnvVarsFile = project_response.result.deployment_configs.into();
+        let existing_vars: FullEnvVarsFile = project_response.result.deployment_configs.into();
 
         if let Some(path) = self.path {
             let mut dump_file = std::fs::File::create(&path)?;
@@ -225,7 +231,7 @@ impl SetEnvVars {
             anyhow::bail!("unsuccessful Cloudflare request");
         }
 
-        let existing_vars: EnvVarsFile = project_response.result.deployment_configs.into();
+        let existing_vars: FullEnvVarsFile = project_response.result.deployment_configs.into();
 
         let new_vars: EnvVarsFile = serde_json::from_reader(&mut std::fs::File::open(&self.path)?)?;
 
@@ -264,6 +270,11 @@ impl ToEnvFile {
         let target_env_vars = match self.environment {
             Environment::Production => all_vars.production,
             Environment::Preview => all_vars.preview,
+        };
+
+        let target_env_vars = match target_env_vars {
+            Some(value) => value,
+            None => anyhow::bail!("empty environment"),
         };
 
         let mut buffer = String::new();
@@ -307,7 +318,7 @@ impl CloudflarePagesDeploymentConfigs {
     }
 }
 
-impl From<CloudflarePagesDeploymentConfigs> for EnvVarsFile {
+impl From<CloudflarePagesDeploymentConfigs> for FullEnvVarsFile {
     fn from(value: CloudflarePagesDeploymentConfigs) -> Self {
         Self {
             production: value.production.into(),
@@ -346,7 +357,7 @@ fn main() -> Result<()> {
 }
 
 fn generate_deployment_configs_patch(
-    old_vars: &EnvVarsFile,
+    old_vars: &FullEnvVarsFile,
     new_vars: &EnvVarsFile,
 ) -> CloudflarePagesDeploymentConfigs {
     CloudflarePagesDeploymentConfigs {
@@ -357,40 +368,42 @@ fn generate_deployment_configs_patch(
 
 fn generate_env_patch(
     old_env: &BTreeMap<String, String>,
-    new_env: &BTreeMap<String, String>,
+    new_env: &Option<BTreeMap<String, String>>,
 ) -> CloudflarePagesEnvironment {
     let mut changes: BTreeMap<String, Option<CloudflarePagesEnvVarValue>> = Default::default();
 
-    // Finds new and changed variables
-    new_env
-        .iter()
-        .filter(|(key, value)| match old_env.get(*key) {
-            Some(old_value) => {
-                // Keep the patch minimal: do not generate entry if not necessary
-                *value != old_value
-            }
-            None => {
-                // This is a new env var
-                true
-            }
-        })
-        .for_each(|(key, value)| {
-            changes.insert(
-                key.to_owned(),
-                Some(CloudflarePagesEnvVarValue {
-                    r#type: CloudflarePagesEnvVarValueType::PlainText,
-                    value: value.to_owned(),
-                }),
-            );
-        });
+    if let Some(new_env) = new_env.as_ref() {
+        // Finds new and changed variables
+        new_env
+            .iter()
+            .filter(|(key, value)| match old_env.get(*key) {
+                Some(old_value) => {
+                    // Keep the patch minimal: do not generate entry if not necessary
+                    *value != old_value
+                }
+                None => {
+                    // This is a new env var
+                    true
+                }
+            })
+            .for_each(|(key, value)| {
+                changes.insert(
+                    key.to_owned(),
+                    Some(CloudflarePagesEnvVarValue {
+                        r#type: CloudflarePagesEnvVarValueType::PlainText,
+                        value: value.to_owned(),
+                    }),
+                );
+            });
 
-    // Finds removed variables and generates null entries
-    old_env
-        .iter()
-        .filter(|(key, _)| !new_env.contains_key(*key))
-        .for_each(|(key, _)| {
-            changes.insert(key.to_owned(), None);
-        });
+        // Finds removed variables and generates null entries
+        old_env
+            .iter()
+            .filter(|(key, _)| !new_env.contains_key(*key))
+            .for_each(|(key, _)| {
+                changes.insert(key.to_owned(), None);
+            });
+    }
 
     CloudflarePagesEnvironment {
         env_vars: Some(changes),
