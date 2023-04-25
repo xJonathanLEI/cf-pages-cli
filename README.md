@@ -15,7 +15,7 @@
 With `cargo` installed, install from crates.io:
 
 ```console
-cargo install --locked --version 0.2.0 cf-pages-cli
+cargo install --locked --version 0.2.1 cf-pages-cli
 ```
 
 ## Usage
