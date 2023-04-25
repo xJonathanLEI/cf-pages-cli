@@ -31,6 +31,8 @@ $ export CLOUDFLARE_TOKEN="YOUR_API_TOKEN"
 
 _(It's also possible to use them as command line options via `--account` and `--token`, respectively, but it's easier to just export them as they're used in many commands.)_
 
+By default, the command exports the latest settings for both the production and preview environments. You can also export the variables from a specific deployment by adding a `--deployment DEPLOYMENT_ID` option. Note that since each deployment only targets one environment, the other environment will be left as `null` in the resulting JSON file.
+
 Then, export the environment variables of your project:
 
 ```console

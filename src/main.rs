@@ -34,6 +34,8 @@ pub struct GetEnvVars {
     credentials: CredentialsArgs,
     #[clap(long, env = "CF_PAGES_PROJECT", help = "Name of the Pages project")]
     project: String,
+    #[clap(long, env = "CF_PAGES_DEPLOYMENT", help = "Deployment ID")]
+    deployment: Option<String>,
     #[clap(
         long,
         env = "CF_PAGES_PATH",
@@ -103,6 +105,14 @@ struct CloudflarePagesProject {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+struct CloudflarePagesDeployment {
+    id: String,
+    environment: Environment,
+    #[serde(flatten)]
+    vars: CloudflarePagesEnvironment,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 struct CloudflarePagesPatchRequest {
     deployment_configs: CloudflarePagesDeploymentConfigs,
 }
@@ -167,28 +177,86 @@ impl ValueEnum for Environment {
     }
 }
 
+impl Serialize for Environment {
+    fn serialize<S>(&self, serializer: S) -> std::result::Result<S::Ok, S::Error>
+    where
+        S: serde::Serializer,
+    {
+        serializer.serialize_str(match self {
+            Environment::Production => "production",
+            Environment::Preview => "preview",
+        })
+    }
+}
+
+impl<'de> Deserialize<'de> for Environment {
+    fn deserialize<D>(deserializer: D) -> std::result::Result<Self, D::Error>
+    where
+        D: serde::Deserializer<'de>,
+    {
+        let value = String::deserialize(deserializer)?;
+        match value.parse() {
+            Ok(value) => Ok(value),
+            Err(err) => Err(serde::de::Error::custom(format!(
+                "invalid environment string: {err}"
+            ))),
+        }
+    }
+}
+
 impl GetEnvVars {
     fn run(self) -> Result<()> {
         let client = ClientBuilder::new()
             .timeout(Duration::from_secs(10))
             .build()?;
 
-        let project_response: CloudflareResponse<CloudflarePagesProject> = client
-            .get(format!(
-                "https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}",
-                self.credentials.account, self.project
-            ))
-            .header(
-                "Authorization",
-                format!("Bearer {}", self.credentials.token),
-            )
-            .send()?
-            .json()?;
-        if !project_response.success {
-            anyhow::bail!("unsuccessful Cloudflare request");
-        }
+        let existing_vars: EnvVarsFile = if let Some(deployment) = self.deployment {
+            let deployment_response: CloudflareResponse<CloudflarePagesDeployment> = client
+                .get(format!(
+                    "https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}/deployments/{}",
+                    self.credentials.account, self.project, deployment
+                ))
+                .header(
+                    "Authorization",
+                    format!("Bearer {}", self.credentials.token),
+                )
+                .send()?
+                .json()?;
+            if !deployment_response.success {
+                anyhow::bail!("unsuccessful Cloudflare request");
+            }
 
-        let existing_vars: FullEnvVarsFile = project_response.result.deployment_configs.into();
+            let deployment = deployment_response.result;
+            let vars: BTreeMap<String, String> = deployment.vars.into();
+
+            match deployment.environment {
+                Environment::Production => EnvVarsFile {
+                    production: Some(vars),
+                    preview: None,
+                },
+                Environment::Preview => EnvVarsFile {
+                    production: None,
+                    preview: Some(vars),
+                },
+            }
+        } else {
+            let project_response: CloudflareResponse<CloudflarePagesProject> = client
+                .get(format!(
+                    "https://api.cloudflare.com/client/v4/accounts/{}/pages/projects/{}",
+                    self.credentials.account, self.project
+                ))
+                .header(
+                    "Authorization",
+                    format!("Bearer {}", self.credentials.token),
+                )
+                .send()?
+                .json()?;
+            if !project_response.success {
+                anyhow::bail!("unsuccessful Cloudflare request");
+            }
+
+            project_response.result.deployment_configs.into()
+        };
 
         if let Some(path) = self.path {
             let mut dump_file = std::fs::File::create(&path)?;
@@ -323,6 +391,15 @@ impl From<CloudflarePagesDeploymentConfigs> for FullEnvVarsFile {
         Self {
             production: value.production.into(),
             preview: value.preview.into(),
+        }
+    }
+}
+
+impl From<CloudflarePagesDeploymentConfigs> for EnvVarsFile {
+    fn from(value: CloudflarePagesDeploymentConfigs) -> Self {
+        Self {
+            production: Some(value.production.into()),
+            preview: Some(value.preview.into()),
         }
     }
 }
