@@ -26,8 +26,12 @@ pub struct GetEnvVars {
     credentials: CredentialsArgs,
     #[clap(long, env = "CF_PAGES_PROJECT", help = "Name of the Pages project")]
     project: String,
-    #[clap(long, env = "CF_PAGES_PATH", help = "Path to save the JSON file")]
-    path: PathBuf,
+    #[clap(
+        long,
+        env = "CF_PAGES_PATH",
+        help = "Path to save the JSON file. Prints to stdout if not provided"
+    )]
+    path: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -122,16 +126,21 @@ impl GetEnvVars {
 
         let existing_vars: EnvVarsFile = project_response.result.deployment_configs.into();
 
-        let mut dump_file = std::fs::File::create(&self.path)?;
-        serde_json::to_writer_pretty(&mut dump_file, &existing_vars)?;
+        if let Some(path) = self.path {
+            let mut dump_file = std::fs::File::create(&path)?;
+            serde_json::to_writer_pretty(&mut dump_file, &existing_vars)?;
 
-        // EOF line for Unix platforms
-        writeln!(&mut dump_file)?;
+            // EOF line for Unix platforms
+            writeln!(&mut dump_file)?;
 
-        println!(
-            "Environment variables written to: {}",
-            self.path.to_string_lossy()
-        );
+            println!(
+                "Environment variables written to: {}",
+                path.to_string_lossy()
+            );
+        } else {
+            let json = serde_json::to_string_pretty(&existing_vars)?;
+            println!("{json}");
+        }
 
         Ok(())
     }
