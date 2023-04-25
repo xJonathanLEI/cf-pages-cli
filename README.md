@@ -4,6 +4,8 @@
 
 **Command line utility for managing Cloudflare Pages projects**
 
+[![crates-badge](https://img.shields.io/crates/v/cf-pages-cli.svg)](https://crates.io/crates/cf-pages-cli)
+
 ## What is `cf-pages-cli`
 
 `cf-pages-cli` is a line utility for managing [Cloudflare Pages](https://pages.cloudflare.com/) projects. Currently, its only capability is managing environment variables, which is useful in CI/CD workflows to synchronize projects with variables stored in Git.
