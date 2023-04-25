@@ -349,9 +349,13 @@ impl ToEnvFile {
 
         for (key, value) in target_env_vars.iter() {
             if self.empty {
-                buffer.push_str(&format!("{}=\"\"\n", key));
+                buffer.push_str(&format!("{}=\n", key));
             } else {
-                buffer.push_str(&format!("{}={}\n", key, serde_json::to_string(value)?));
+                buffer.push_str(&format!(
+                    "{}={}\n",
+                    key,
+                    value.replace("\r\n", "").replace('\n', "")
+                ));
             }
         }
 
