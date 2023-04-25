@@ -1,7 +1,7 @@
-use std::{collections::BTreeMap, io::Write, path::PathBuf, time::Duration};
+use std::{collections::BTreeMap, io::Write, path::PathBuf, str::FromStr, time::Duration};
 
 use anyhow::Result;
-use clap::{Parser, Subcommand};
+use clap::{builder::PossibleValue, Parser, Subcommand, ValueEnum};
 use reqwest::blocking::ClientBuilder;
 use serde::{Deserialize, Serialize};
 
@@ -12,12 +12,20 @@ struct Cli {
     command: Subcommands,
 }
 
+#[derive(Debug, Clone, Copy)]
+enum Environment {
+    Production,
+    Preview,
+}
+
 #[derive(Debug, Subcommand)]
 enum Subcommands {
     #[clap(about = "Download environment variables into a local JSON file")]
     GetEnvVars(GetEnvVars),
     #[clap(about = "Upload environment variables from a local JSON file")]
     SetEnvVars(SetEnvVars),
+    #[clap(about = "Generate .env file for front-end development")]
+    ToEnvFile(ToEnvFile),
 }
 
 #[derive(Debug, Parser)]
@@ -46,6 +54,31 @@ pub struct SetEnvVars {
         help = "Path to the file containing desired environment variables"
     )]
     path: PathBuf,
+}
+
+#[derive(Debug, Parser)]
+pub struct ToEnvFile {
+    #[clap(
+        long,
+        env = "CF_PAGES_ENVIRONMENT",
+        default_value = "production",
+        help = "Environment to export"
+    )]
+    environment: Environment,
+    #[clap(
+        long,
+        env = "CF_PAGES_EMPTY",
+        help = "Emit the variable names only, with empty values"
+    )]
+    empty: bool,
+    #[clap(
+        long,
+        env = "CF_PAGES_OUTPUT",
+        help = "Path to save the .env file. Prints to stdout if not provided"
+    )]
+    output: Option<PathBuf>,
+    #[clap(help = "Path to the JSON file containing environment variables")]
+    file: String,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -101,6 +134,31 @@ enum CloudflarePagesEnvVarValueType {
 struct EnvVarsFile {
     production: BTreeMap<String, String>,
     preview: BTreeMap<String, String>,
+}
+
+impl FromStr for Environment {
+    type Err = &'static str;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "production" => Ok(Self::Production),
+            "preview" => Ok(Self::Preview),
+            _ => Err("unknown value"),
+        }
+    }
+}
+
+impl ValueEnum for Environment {
+    fn value_variants<'a>() -> &'a [Self] {
+        &[Self::Production, Self::Preview]
+    }
+
+    fn to_possible_value(&self) -> Option<PossibleValue> {
+        match self {
+            Environment::Production => Some(PossibleValue::new("production")),
+            Environment::Preview => Some(PossibleValue::new("preview")),
+        }
+    }
 }
 
 impl GetEnvVars {
@@ -200,6 +258,40 @@ impl SetEnvVars {
     }
 }
 
+impl ToEnvFile {
+    fn run(self) -> Result<()> {
+        let all_vars: EnvVarsFile = serde_json::from_reader(&mut std::fs::File::open(self.file)?)?;
+        let target_env_vars = match self.environment {
+            Environment::Production => all_vars.production,
+            Environment::Preview => all_vars.preview,
+        };
+
+        let mut buffer = String::new();
+
+        for (key, value) in target_env_vars.iter() {
+            if self.empty {
+                buffer.push_str(&format!("{}=\"\"\n", key));
+            } else {
+                buffer.push_str(&format!("{}={}\n", key, serde_json::to_string(value)?));
+            }
+        }
+
+        if let Some(output) = self.output {
+            let mut dump_file = std::fs::File::create(&output)?;
+            dump_file.write_all(buffer.as_bytes())?;
+
+            println!(
+                "Environment variables written to: {}",
+                output.to_string_lossy()
+            );
+        } else {
+            print!("{buffer}");
+        }
+
+        Ok(())
+    }
+}
+
 impl CloudflarePagesDeploymentConfigs {
     pub fn is_empty(&self) -> bool {
         let is_preview_empty = match &self.preview.env_vars {
@@ -247,6 +339,7 @@ fn main() -> Result<()> {
     match cli.command {
         Subcommands::GetEnvVars(cmd) => cmd.run()?,
         Subcommands::SetEnvVars(cmd) => cmd.run()?,
+        Subcommands::ToEnvFile(cmd) => cmd.run()?,
     }
 
     Ok(())

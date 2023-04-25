@@ -20,6 +20,8 @@ cargo install --locked --version 0.1.0 cf-pages-cli
 
 ## Usage
 
+### Synchronize variables
+
 First, make sure you have your Cloudflare account ID, as well as a valid Cloudflare API token (with the `Cloudflare Pages:Edit` permission). Export them as environment variables:
 
 ```console
@@ -27,7 +29,7 @@ $ export CLOUDFLARE_ACCOUNT="YOUR_ACCOUNT_ID"
 $ export CLOUDFLARE_TOKEN="YOUR_API_TOKEN"
 ```
 
-_(It's also possible to use them as command line options via `--account` and `--token`, respectively, but it's easier to just export them as they're used in all commands.)_
+_(It's also possible to use them as command line options via `--account` and `--token`, respectively, but it's easier to just export them as they're used in many commands.)_
 
 Then, export the environment variables of your project:
 
@@ -44,6 +46,19 @@ Now, make changes to the `vars.json` file, and upload to Cloudflare:
 $ cf-pages set-env-vars --project YOUR_PROJECT_NAME --path ./vars.json
 Environment variables successfully updated
 ```
+
+### Generate `.env` files
+
+The `vars.json` file exported with the `get-env-vars` can also be used to generate `.env` files, which are useful for front-end development:
+
+```console
+$ cf-pages to-env-file --output ./.env ./vars.json
+Environment variables written to: ./.env
+```
+
+You can also print the generated file content to stdout by omitting the `--output` option.
+
+By default, environment variables for the production environment are exported. To export the preview environment instead, add the `--environment preview` option.
 
 ## License
 
