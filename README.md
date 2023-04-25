@@ -36,16 +36,18 @@ By default, the command exports the latest settings for both the production and 
 Then, export the environment variables of your project:
 
 ```console
-$ cf-pages get-env-vars --project YOUR_PROJECT_NAME --path ./vars.json
+$ cf-pages get-env-vars --project YOUR_PROJECT_NAME --output ./vars.json
 Environment variables written to: ./vars.json
 ```
 
-_(It's also possible to set the project name and file path via the `CF_PAGES_PROJECT` and `CF_PAGES_PATH` environment variables, respectively.)_
+_(It's also possible to set the project name and file path via the `CF_PAGES_PROJECT` and `CF_PAGES_OUTPUT` environment variables, respectively.)_
+
+You can also print the generated file content to stdout by omitting the `--output` option.
 
 Now, make changes to the `vars.json` file, and upload to Cloudflare:
 
 ```console
-$ cf-pages set-env-vars --project YOUR_PROJECT_NAME --path ./vars.json
+$ cf-pages set-env-vars --project YOUR_PROJECT_NAME --file ./vars.json
 Environment variables successfully updated
 ```
 

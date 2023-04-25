@@ -38,10 +38,10 @@ pub struct GetEnvVars {
     deployment: Option<String>,
     #[clap(
         long,
-        env = "CF_PAGES_PATH",
+        env = "CF_PAGES_OUTPUT",
         help = "Path to save the JSON file. Prints to stdout if not provided"
     )]
-    path: Option<PathBuf>,
+    output: Option<PathBuf>,
 }
 
 #[derive(Debug, Parser)]
@@ -52,10 +52,10 @@ pub struct SetEnvVars {
     project: String,
     #[clap(
         long,
-        env = "CF_PAGES_PATH",
+        env = "CF_PAGES_FILE",
         help = "Path to the file containing desired environment variables"
     )]
-    path: PathBuf,
+    file: PathBuf,
 }
 
 #[derive(Debug, Parser)]
@@ -258,8 +258,8 @@ impl GetEnvVars {
             project_response.result.deployment_configs.into()
         };
 
-        if let Some(path) = self.path {
-            let mut dump_file = std::fs::File::create(&path)?;
+        if let Some(output) = self.output {
+            let mut dump_file = std::fs::File::create(&output)?;
             serde_json::to_writer_pretty(&mut dump_file, &existing_vars)?;
 
             // EOF line for Unix platforms
@@ -267,7 +267,7 @@ impl GetEnvVars {
 
             println!(
                 "Environment variables written to: {}",
-                path.to_string_lossy()
+                output.to_string_lossy()
             );
         } else {
             let json = serde_json::to_string_pretty(&existing_vars)?;
@@ -301,7 +301,7 @@ impl SetEnvVars {
 
         let existing_vars: FullEnvVarsFile = project_response.result.deployment_configs.into();
 
-        let new_vars: EnvVarsFile = serde_json::from_reader(&mut std::fs::File::open(&self.path)?)?;
+        let new_vars: EnvVarsFile = serde_json::from_reader(&mut std::fs::File::open(&self.file)?)?;
 
         let deployment_configs_patch = generate_deployment_configs_patch(&existing_vars, &new_vars);
         if deployment_configs_patch.is_empty() {
